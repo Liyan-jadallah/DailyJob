@@ -74,11 +74,11 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres',
+        'NAME': os.getenv('DB_NAME', 'postgres'),
+        'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': 'db.wextqsamwdclyhivjord.supabase.co',
-        'PORT': '5432',
+        'HOST': os.getenv('DB_HOST', 'db.wextqsamwdclyhivjord.supabase.co'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
