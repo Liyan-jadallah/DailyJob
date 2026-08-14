@@ -136,7 +136,7 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5500",
     "http://localhost:5500",
-    "https://daily-job-ashen.vercel.app"
+    "https://dailyjob-1.onrender.com"
 ]
 
 
@@ -149,3 +149,4 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ]
 }
+ALLOWED_HOSTS = ['dailyjob.onrender.com', 'dailyjob-1.onrender.com', 'localhost', '127.0.0.1']
