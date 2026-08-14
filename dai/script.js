@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const BASE_URL = "https://dailyjob.onrender.com/api";
+  const BASE_URL = "https://dailyjob-2.onrender.com/api";
 
   const Api = {
     verifyEmail: async (email, otp) => {
