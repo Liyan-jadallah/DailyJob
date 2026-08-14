@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     
     'core',                     
-    'rest_framework',      
+    'rest_framework',       
     'corsheaders',
     'rest_framework.authtoken',          
 ]
@@ -133,7 +133,11 @@ AUTH_USER_MODEL = 'core.User'
 
 
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = ["http://127.0.0.1:5500", "http://localhost:5500"]
+CORS_ALLOWED_ORIGINS = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "https://daily-job-ashen.vercel.app"
+]
 
 
 REST_FRAMEWORK = {
