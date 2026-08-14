@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+  <title>Daily Job | Jordan's #1 Job Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="app-shell" id="appShell">
+
+    <!-- ============ HEADER ============ -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon"><i class="fa-solid fa-briefcase"></i></span>
+        <span class="brand-name">Daily<span class="brand-accent">Job</span></span>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn lang-toggle" id="langToggle">عربي</button>
+        <button class="icon-btn" id="notifBtn" data-nav="notifications" data-auth-required>
+          <i class="fa-regular fa-bell"></i>
+          <span class="notif-dot hidden" id="headerNotifDot"></span>
+        </button>
+        <button class="icon-btn" id="menuBtn"><i class="fa-solid fa-bars"></i></button>
+      </div>
+    </header>
+
+    <!-- ============ SCREEN: HOME ============ -->
+    <main class="screen active" id="screen-home">
+
+      <!-- PROMINENT POST AD BUTTON ON HOME PAGE -->
+      <div class="post-ad-banner">
+        <button class="btn-post-ad" id="homePostAdBtn" data-nav="add" data-auth-required>
+          <i class="fa-solid fa-plus-circle"></i>
+          <span class="post-ad-text" data-i18n="postAd">Post Your Ad Now</span>
+        </button>
+      </div>
+
+      <div class="search-wrap">
+        <i class="fa-solid fa-magnifying-glass search-ic"></i>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search for jobs or used items...">
+        <button class="filter-btn" id="filterBtn"><i class="fa-solid fa-sliders"></i></button>
+      </div>
+
+      <!-- EXACT CATEGORY CHIPS - 6 Categories -->
+      <div class="chip-row" id="typeChipRow">
+        <button class="chip chip-cat active" data-type="all">
+          <i class="fa-solid fa-layer-group"></i>
+          <span data-i18n="all">All</span>
+        </button>
+
+        <button class="chip chip-highlight" data-type="daily">
+          <i class="fa-solid fa-bolt"></i>
+          <span data-i18n="dailyJob">Daily Jobs</span>
+        </button>
+
+        <button class="chip" data-type="fulltime">
+          <i class="fa-solid fa-briefcase"></i>
+          <span data-i18n="fullTime">Full-Time Jobs</span>
+        </button>
+
+        <button class="chip" data-type="ads">
+          <i class="fa-solid fa-rectangle-ad"></i>
+          <span data-i18n="announcements">Ads & News</span>
+        </button>
+
+        <button class="chip" data-type="services">
+          <i class="fa-solid fa-hand-holding-hand"></i>
+          <span data-i18n="services">Services</span>
+        </button>
+
+        <button class="chip" data-type="used">
+          <i class="fa-regular fa-comment-dots"></i>
+          <span data-i18n="usedGoods">Used Items</span>
+        </button>
+
+        <button class="chip" data-type="free">
+          <i class="fa-solid fa-gift"></i>
+          <span data-i18n="freebies">Freebies</span>
+        </button>
+      </div>
+
+      <div class="active-filters" id="activeFilters"></div>
+
+      <div class="section-label">
+        <i class="fa-solid fa-fire section-flame"></i>
+        <span data-i18n="activeAds">Active Listings</span>
+        <span class="results-count" id="resultsCount"></span>
+      </div>
+
+      <div class="ads-list" id="adsList"></div>
+      <div class="empty-state hidden" id="homeEmptyState">
+        <i class="fa-regular fa-folder-open"></i>
+        <p data-i18n="noResults">No results match your search</p>
+      </div>
+    </main>
+
+    <!-- ============ SCREEN: DETAILS ============ -->
+    <main class="screen" id="screen-details">
+      <div class="details-topbar">
+        <button class="back-btn" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <span data-i18n="adDetails">Ad Details</span>
+        <span class="topbar-spacer"></span>
+      </div>
+      <div class="details-card">
+        <h1 class="details-title" id="detailsTitle">—</h1>
+        <div class="tag-row" id="detailsTags"></div>
+        <div class="meta-grid">
+          <div class="meta-item"><span id="metaTime">—</span><i class="fa-regular fa-clock"></i></div>
+          <div class="meta-item"><span id="metaLoc">—</span><i class="fa-solid fa-location-dot"></i></div>
+          <div class="meta-item"><span id="metaDays">—</span><i class="fa-solid fa-calendar-days"></i></div>
+          <div class="meta-item"><span id="metaWorkers">—</span><i class="fa-solid fa-user-group"></i></div>
+        </div>
+
+        <!-- IMAGE GALLERY -->
+        <div class="gallery-container hidden" id="detailsGallery">
+          <div class="gallery-wrapper">
+            <img class="gallery-image" id="galleryImage" src="" alt="Ad image">
+            <button class="gallery-nav prev" id="galleryPrev" aria-label="Previous image">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <button class="gallery-nav next" id="galleryNext" aria-label="Next image">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+          <div class="gallery-counter" id="galleryCounter"></div>
+        </div>
+
+        <div class="price-row">
+          <span class="price-big" id="priceBig">—</span>
+          <span class="price-currency" id="priceCurrency">JOD</span>
+          <span class="price-unit" id="priceUnit"></span>
+        </div>
+
+        <!-- PAYMENT METHOD DISPLAY -->
+        <div class="payment-display hidden" id="paymentDisplay">
+          <div class="payment-label"><i class="fa-solid fa-wallet"></i> <span data-i18n="paymentMethod">Payment
+              Method</span></div>
+          <p class="payment-value" id="paymentValue">—</p>
+        </div>
+
+        <div class="desc-card">
+          <div class="desc-head"><i class="fa-solid fa-file-lines"></i> <span data-i18n="jobDesc">Description</span>
+          </div>
+          <p class="desc-text" id="descText"></p>
+          <ul class="desc-list" id="descList"></ul>
+        </div>
+
+        <!-- PHONE DISPLAY - PROMINENT -->
+        <div class="phone-display-card" id="phoneDisplay">
+          <div class="phone-display-label"><i class="fa-solid fa-phone"></i> <span data-i18n="contactPhone">Contact
+              Number</span></div>
+          <div class="phone-display-value" id="phoneValue">—</div>
+        </div>
+      </div>
+      <div class="details-actionbar">
+        <button class="contact-main" id="contactBtn"><i class="fa-brands fa-whatsapp"></i>
+          <span data-i18n="contactWhatsapp">Call or WhatsApp</span></button>
+        <a class="contact-call-btn" id="callBtn" href="tel:">
+          <i class="fa-solid fa-phone"></i>
+          <span data-i18n="callDirect">Call</span>
+        </a>
+        <button class="icon-round" id="shareBtn"><i class="fa-solid fa-share-nodes"></i></button>
+        <button class="icon-round" id="favBtn"><i class="fa-regular fa-heart"></i></button>
+        
+        <!-- زر الحذف الجديد للإعلان (مخفي افتراضياً، يظهر لصاحب الإعلان فقط) -->
+        <button class="icon-round hidden" id="deleteAdBtn" style="color: #ef4444; border-color: #ef4444;">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </main>
+
+    <!-- ============ SCREEN: ADD AD (Abu Al-Dinar) ============ -->
+    <main class="screen" id="screen-add">
+      <div class="details-topbar dark">
+        <button class="back-btn light" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="abudinar-title">
+          <span data-i18n="abuDinar">Abu Al-Dinar</span>
+          <small data-i18n="abuDinarSub">Best way to connect your service with employers</small>
+        </div>
+        <span class="topbar-spacer"></span>
+      </div>
+
+      <form class="form-card" id="addForm" novalidate>
+        <label class="form-label" data-i18n="adTitle">Ad Title</label>
+        <input class="form-input" id="fTitle" type="text" placeholder="e.g.: Construction worker needed in Madaba"
+          required>
+
+        <label class="form-label" data-i18n="governorate">Governorate</label>
+        <select class="form-select" id="fGovernorate" required></select>
+
+        <!-- UPDATED CATEGORY SELECT WITH NEW 6 CATEGORIES + SUBCATEGORIES -->
+        <label class="form-label" data-i18n="category">Category</label>
+        <select class="form-select" id="fCategory" required>
+
+          <!-- Main Category: Daily Jobs -->
+          <option value="daily" data-i18n-cat="daily">Daily Jobs / عمل يومي</option>
+
+          <!-- Main Category: Full-Time Jobs -->
+          <option value="fulltime" data-i18n-cat="fulltime">Full-Time Jobs / وظائف دوام كامل</option>
+
+          <!-- Main Category: Ads & News -->
+          <option value="ads" data-i18n-cat="ads">Ads & News / إعلانات وأخبار</option>
+
+          <!-- Main Category: Services -->
+          <option value="services" data-i18n-cat="services">Services / خدمات</option>
+
+          <!-- Sub-categories under Services -->
+          <optgroup label="— Service Types —" data-i18n-optgroup="serviceTypes">
+            <option value="construction" data-i18n-cat="construction">Construction & Building / أعمال بناء</option>
+            <option value="delivery" data-i18n-cat="delivery">Delivery & Courier / توصيل</option>
+            <option value="cleaning" data-i18n-cat="cleaning">Housekeeping & Cleaning / نظافة</option>
+            <option value="moving" data-i18n-cat="moving">Moving & Packing / نقل وأثاث</option>
+            <option value="plumbing" data-i18n-cat="plumbing">Plumbing & Heating / سباكة وتدفئة</option>
+            <option value="electrical" data-i18n-cat="electrical">Electrical Work / كهرباء</option>
+            <option value="hospitality" data-i18n-cat="hospitality">Restaurants & Catering / ضيافة ومطاعم</option>
+            <option value="caregiving" data-i18n-cat="caregiving">Babysitting & Care / رعاية أطفال</option>
+          </optgroup>
+
+          <!-- Main Category: Used Items -->
+          <option value="used" data-i18n-cat="used">Used Items / أغراض مستعملة</option>
+
+          <!-- Sub-categories under Used Items -->
+          <optgroup label="— Item Types —" data-i18n-optgroup="itemTypes">
+            <option value="electronics" data-i18n-cat="electronics">Used Electronics / إلكترونيات مستعملة</option>
+            <option value="furniture" data-i18n-cat="furniture">Used Furniture / أثاث مستعمل</option>
+          </optgroup>
+
+          <!-- Main Category: Freebies -->
+          <option value="free" data-i18n-cat="free">Freebies / هدايا مجانية</option>
+
+          <!-- Other -->
+          <option value="other" data-i18n-cat="other">Other / أخرى</option>
+        </select>
+
+        <label class="form-label" data-i18n="dailyWage">Daily Wage / Price (JOD)</label>
+        <input class="form-input" id="fWage" type="number" step="0.1" min="0" placeholder="e.g.: 25" required>
+
+        <label class="form-label" data-i18n="details">Details</label>
+        <textarea class="form-input" id="fDetails" rows="4" placeholder="Write your description here..."
+          required></textarea>
+
+        <!-- MULTIPLE IMAGE UPLOAD -->
+        <label class="form-label" data-i18n="uploadImages">Upload Images (Required)</label>
+        <div class="image-upload-area">
+          <input class="image-file-input hidden" id="fImages" type="file" accept="image/*" multiple required>
+          <button type="button" class="image-upload-btn" id="imageUploadBtn">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span data-i18n="selectImages">Select Images</span>
+          </button>
+          <div class="image-preview-list" id="imagePreviewList"></div>
+        </div>
+
+        <label class="form-label" data-i18n="contactMethod">Contact Method</label>
+        <select class="form-select" id="fContactMethod" required>
+          <option value="both" data-i18n-contact="both">Call or WhatsApp / اتصال أو واتساب</option>
+          <option value="call" data-i18n-contact="call">Phone Call / اتصال</option>
+          <option value="whatsapp" data-i18n-contact="whatsapp">WhatsApp / واتساب</option>
+        </select>
+
+        <label class="form-label" data-i18n="phoneNumber">Phone Number</label>
+        <input class="form-input" id="fPhone" type="tel" placeholder="07X XXX XXXX" maxlength="10" minlength="10" required>
+
+        <!-- DIGITAL PAYMENT METHODS ONLY -->
+        <label class="form-label" data-i18n="paymentMethod">Payment Method</label>
+        <div class="payment-options" id="paymentSection">
+          <label class="payment-option">
+            <input type="radio" name="paymentMethod" value="cliq" required checked>
+            <span class="payment-option-text">
+              <span class="payment-icon"><i class="fa-solid fa-wallet"></i></span>
+              <span class="payment-label-text">
+                <span data-i18n="cliqAccount">CliQ Account - Dinarak Wallet (Alias: DAILYJOB1)</span>
+                <small>حساب كليك - محفظة دينارك (اسم مستعار: DAILYJOB1)</small>
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div class="form-error hidden" id="addFormError"></div>
+        <button type="submit" class="btn-primary btn-block" id="submitAdBtn" style="margin-top:16px;">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span data-i18n="publishAd">Publish Ad - 1 JOD</span>
+        </button>
+      </form>
+    </main>
+
+    <!-- ============ SCREEN: FAVORITES ============ -->
+    <main class="screen" id="screen-favorites">
+      <div class="details-topbar">
+        <button class="back-btn" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <span data-i18n="favorites">Favorites</span>
+        <span class="topbar-spacer"></span>
+      </div>
+      <div class="ads-list" id="favList"></div>
+      <div class="empty-state hidden" id="favEmptyState">
+        <i class="fa-regular fa-heart"></i>
+        <p data-i18n="noFavorites">You haven't added any favorites yet</p>
+      </div>
+    </main>
+
+    <!-- ============ SCREEN: MY LISTINGS ============ -->
+    <main class="screen" id="screen-mylistings">
+      <div class="details-topbar">
+        <button class="back-btn" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <span data-i18n="myAds">My Listings</span>
+        <span class="topbar-spacer"></span>
+      </div>
+      <div class="ads-list" id="mineList"></div>
+      <div class="empty-state hidden" id="mineEmptyState">
+        <i class="fa-regular fa-folder-open"></i>
+        <p data-i18n="noAdsYet">You haven't posted any ads yet</p>
+        <button class="btn-primary btn-block" data-nav="add" data-auth-required style="margin-top:16px;">
+          <i class="fa-solid fa-plus"></i>
+          <span data-i18n="postFirstAd">Post Your First Ad</span>
+        </button>
+      </div>
+    </main>
+
+    <!-- ============ SCREEN: NOTIFICATIONS ============ -->
+    <main class="screen" id="screen-notifications">
+      <div class="details-topbar">
+        <button class="back-btn" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <span data-i18n="notifications">Notifications</span>
+        <button class="text-btn-small" id="markAllReadBtn" data-i18n="markAllRead">Mark All as Read</button>
+      </div>
+      <div class="notif-list" id="notifList"></div>
+      <div class="empty-state hidden" id="notifEmptyState">
+        <i class="fa-regular fa-bell"></i>
+        <p data-i18n="noNotifications">No notifications at the moment</p>
+      </div>
+    </main>
+
+    <!-- ============ SCREEN: SETTINGS ============ -->
+    <main class="screen" id="screen-settings">
+      <div class="details-topbar">
+        <button class="back-btn" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <span data-i18n="settings">Settings</span>
+        <span class="topbar-spacer"></span>
+      </div>
+
+      <!-- Account Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <i class="fa-solid fa-user"></i>
+          <span data-i18n="accountInfo">Account Information</span>
+        </div>
+        <div class="settings-card">
+          <label class="form-label" data-i18n="email">Email Address</label>
+          <input class="form-input" id="settingsEmail" type="email" disabled>
+
+          <label class="form-label" style="margin-top:12px;" data-i18n="username">Username</label>
+          <input class="form-input" id="settingsUsername" type="text">
+
+          <button class="btn-primary btn-block" id="saveAccountBtn" style="margin-top:12px;">
+            <i class="fa-solid fa-check"></i>
+            <span data-i18n="saveChanges">Save Changes</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Notifications Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <i class="fa-solid fa-bell"></i>
+          <span data-i18n="notificationPrefs">Notification Preferences</span>
+        </div>
+        <div class="settings-card">
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <strong data-i18n="generalNotifs">General Notifications</strong>
+              <small data-i18n="generalNotifsDesc">Alerts about your account activity</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="togglePush">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <strong data-i18n="newMessages">New Messages</strong>
+              <small data-i18n="newMessagesDesc">When you receive a message from a user</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggleMessages">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-text">
+              <strong data-i18n="offersNews">Offers & News</strong>
+              <small data-i18n="offersNewsDesc">Offers and updates from Daily Job</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggleMarketing">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Governorate Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <i class="fa-solid fa-location-dot"></i>
+          <span data-i18n="preferredGov">Preferred Governorate</span>
+        </div>
+        <div class="settings-card">
+          <select class="form-select" id="settingsGov"></select>
+          <small class="settings-hint" data-i18n="chooseGovDefault">Choose default governorate for displaying
+            ads</small>
+        </div>
+      </div>
+
+      <!-- Language Section -->
+      <div class="settings-section">
+        <div class="settings-section-title">
+          <i class="fa-solid fa-language"></i>
+          <span data-i18n="language">Language</span>
+        </div>
+        <div class="settings-card">
+          <div class="lang-options">
+            <button type="button" class="lang-option active" data-lang="en" id="langOptionEn">
+              <span class="lang-flag">🇬🇧</span>
+              <span>English</span>
+              <i class="fa-solid fa-check lang-check"></i>
+            </button>
+            <button type="button" class="lang-option" data-lang="ar" id="langOptionAr">
+              <span class="lang-flag">🇯🇴</span>
+              <span>العربية</span>
+              <i class="fa-solid fa-check lang-check"></i>
+            </button>
+          </div>
+          <small class="settings-hint" data-i18n="directionHint">Direction changes automatically (LTR/RTL)</small>
+        </div>
+      </div>
+
+      <!-- Danger Zone Section (Logout & Delete Account) -->
+      <div class="settings-section" style="margin-top: 30px;">
+        <button class="btn-outline btn-block danger" id="logoutBtn" style="margin-bottom: 12px;">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span data-i18n="logout">Log Out</span>
+        </button>
+        
+        <!-- زر حذف الحساب نهائياً -->
+        <button class="btn-outline btn-block" id="deleteAccountBtn" style="color: #ef4444; border-color: #ef4444; background: rgba(239, 68, 68, 0.05);">
+          <i class="fa-solid fa-user-xmark"></i>
+          <span data-i18n="deleteAccount">Delete Account Permanently</span>
+        </button>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ============ SIDEBAR / DRAWER ============ -->
+  <div class="drawer-overlay" id="drawerOverlay">
+    <aside class="drawer-panel">
+      <div class="drawer-head">
+        <div class="drawer-avatar" id="drawerAvatar">
+          <i class="fa-regular fa-user"></i>
+        </div>
+        <div class="drawer-user">
+          <strong id="drawerUserName">Guest</strong>
+          <span id="drawerUserSub">Sign in to see more</span>
+        </div>
+        <button class="modal-close" id="drawerClose">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <ul class="drawer-list">
+        <li>
+          <button data-nav="home">
+            <i class="fa-solid fa-house"></i>
+            <span data-i18n="home">Home</span>
+          </button>
+        </li>
+        <li>
+          <button data-nav="favorites" data-auth-required>
+            <i class="fa-regular fa-heart"></i>
+            <span data-i18n="favorites">Favorites</span>
+          </button>
+        </li>
+        <li>
+          <button data-nav="mylistings" data-auth-required>
+            <i class="fa-regular fa-folder-open"></i>
+            <span data-i18n="myAds">My Listings</span>
+          </button>
+        </li>
+        <li>
+          <button data-nav="notifications" data-auth-required>
+            <i class="fa-regular fa-bell"></i>
+            <span data-i18n="notifications">Notifications</span>
+          </button>
+        </li>
+        <li>
+          <button data-nav="settings" data-auth-required>
+            <i class="fa-solid fa-gear"></i>
+            <span data-i18n="settings">Settings</span>
+          </button>
+        </li>
+      </ul>
+
+      <div class="drawer-cta">
+        <button class="btn-primary btn-block" data-nav="add" data-auth-required>
+          <i class="fa-solid fa-plus"></i>
+          <span data-i18n="abuDinarCta">Abu Al-Dinar - Post Ad</span>
+        </button>
+      </div>
+
+      <div class="drawer-foot">
+        <button class="btn-outline btn-block" id="drawerAuthBtn">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          <span id="drawerAuthLabel" data-i18n="login">Login</span>
+        </button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ============ AUTHENTICATION MODAL ============ -->
+  <div class="modal-overlay" id="authOverlay">
+    <div class="modal-sheet">
+      <button class="modal-close" id="authClose">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="tabLogin" data-i18n="login">Login</button>
+        <button type="button" class="auth-tab" id="tabRegister" data-i18n="register">Register</button>
+      </div>
+
+      <!-- LOGIN FORM -->
+      <div class="auth-step" id="authStepLogin">
+        <div class="modal-icon"><i class="fa-solid fa-envelope"></i></div>
+        <h2 class="modal-title" data-i18n="login">Welcome Back</h2>
+
+        <label class="form-label" data-i18n="email">Email Address</label>
+        <input class="form-input" id="loginEmail" type="email" placeholder="you@example.com" required>
+
+        <label class="form-label" style="margin-top:12px;" data-i18n="password">Password</label>
+        <div class="password-wrapper">
+          <input class="form-input" id="loginPassword" type="password" placeholder="••••••••" required minlength="6">
+          <i class="fa-regular fa-eye-slash toggle-password" id="toggleLoginPassword"></i>
+        </div>
+        <div class="forgot-password-link">
+          <a href="#" id="forgotPasswordBtn" data-i18n="forgotPassword">نسيت كلمة المرور؟</a>
+        </div>
+
+        <div class="form-error hidden" id="loginError"></div>
+        <button class="btn-primary btn-block" id="loginSubmitBtn" style="margin-top:16px;">
+          <i class="fa-solid fa-sign-in-alt"></i>
+          <span data-i18n="login">Login</span>
+        </button>
+      </div>
+
+      <!-- 1. شاشة تأكيد البريد (بعد التسجيل) -->
+      <div class="auth-step hidden" id="authStepVerify">
+        <div class="modal-icon"><i class="fa-solid fa-shield-halved"></i></div>
+        <h2 class="modal-title">تأكيد الحساب</h2>
+        <p class="modal-sub" style="margin-bottom:15px; font-size:12px; color:#777; text-align:center;">
+          أدخل الرمز المكون من 6 أرقام المرسل إلى بريدك الإلكتروني
+        </p>
+        
+        <input class="form-input" id="verifyOtp" type="text" placeholder="123456" maxlength="6" style="text-align:center; font-size:20px; letter-spacing:8px; font-weight:bold;" required>
+        
+        <div class="form-error hidden" id="verifyError"></div>
+        <button class="btn-primary btn-block" id="verifySubmitBtn" style="margin-top:16px;">
+          <i class="fa-solid fa-check"></i> تأكيد الحساب
+        </button>
+      </div>
+
+      <!-- 2. شاشة طلب استعادة كلمة المرور -->
+      <div class="auth-step hidden" id="authStepForgot">
+        <div class="modal-icon"><i class="fa-solid fa-lock"></i></div>
+        <h2 class="modal-title">نسيت كلمة المرور</h2>
+        <p class="modal-sub" style="margin-bottom:15px; font-size:12px; color:#777; text-align:center;">
+          أدخل بريدك الإلكتروني وسنرسل لك رمزاً لإعادة تعيين كلمة المرور
+        </p>
+        
+        <label class="form-label">البريد الإلكتروني</label>
+        <input class="form-input" id="forgotEmail" type="email" placeholder="you@example.com" required>
+        
+        <div class="form-error hidden" id="forgotError"></div>
+        <button class="btn-primary btn-block" id="forgotSubmitBtn" style="margin-top:16px;">
+          إرسال الرمز
+        </button>
+        <button class="btn-outline btn-block" id="backToLoginBtn" style="margin-top:8px;">
+          عودة لتسجيل الدخول
+        </button>
+      </div>
+
+      <!-- 3. شاشة إدخال كلمة المرور الجديدة -->
+      <div class="auth-step hidden" id="authStepReset">
+        <div class="modal-icon"><i class="fa-solid fa-key"></i></div>
+        <h2 class="modal-title">كلمة مرور جديدة</h2>
+        <p class="modal-sub" style="margin-bottom:15px; font-size:12px; color:#777; text-align:center;">
+          أدخل الرمز المرسل لك، ثم اكتب كلمة المرور الجديدة
+        </p>
+        
+        <label class="form-label">رمز التأكيد (6 أرقام)</label>
+        <input class="form-input" id="resetOtp" type="text" placeholder="123456" maxlength="6" style="text-align:center; font-size:20px; letter-spacing:8px; font-weight:bold;" required>
+        
+        <label class="form-label" style="margin-top:12px;">كلمة المرور الجديدة</label>
+        <div class="password-wrapper">
+          <input class="form-input" id="resetNewPassword" type="password" placeholder="••••••••" required minlength="6">
+          <i class="fa-regular fa-eye-slash toggle-password"></i>
+        </div>
+
+        <div class="form-error hidden" id="resetError"></div>
+        <button class="btn-primary btn-block" id="resetSubmitBtn" style="margin-top:16px;">
+          حفظ وتسجيل الدخول
+        </button>
+      </div>
+
+      <!-- REGISTER FORM -->
+      <div class="auth-step hidden" id="authStepRegister">
+        <div class="modal-icon"><i class="fa-solid fa-user-plus"></i></div>
+        <h2 class="modal-title" data-i18n="createAccount">Create Account</h2>
+        <label class="form-label" data-i18n="email">Email Address</label>
+        <input class="form-input" id="regEmail" type="email" placeholder="you@example.com" required>
+
+        <label class="form-label" style="margin-top:12px;" data-i18n="username">Username</label>
+        <input class="form-input" id="regUsername" type="text" placeholder="john_doe" required minlength="3">
+
+        <label class="form-label" style="margin-top:12px;" data-i18n="password">Password</label>
+        <div class="password-wrapper">
+          <input class="form-input" id="regPassword" type="password" placeholder="••••••••" required minlength="6">
+          <i class="fa-regular fa-eye-slash toggle-password"></i>
+        </div>
+
+        <label class="form-label" style="margin-top:12px;" data-i18n="confirmPassword">Confirm Password</label>
+        <div class="password-wrapper">
+          <input class="form-input" id="regConfirm" type="password" placeholder="••••••••" required minlength="6">
+          <i class="fa-regular fa-eye-slash toggle-password"></i>
+        </div>
+
+        <div class="form-error hidden" id="registerError"></div>
+        <button class="btn-primary btn-block" id="registerSubmitBtn" style="margin-top:16px;">
+          <i class="fa-solid fa-user-plus"></i>
+          <span data-i18n="createAccount">Create Account</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FILTERS MODAL ============ -->
+  <div class="modal-overlay" id="filterOverlay">
+    <div class="modal-sheet">
+      <button class="modal-close" id="filterClose">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <h2 class="modal-title" data-i18n="filterResults">Filter Results</h2>
+
+      <div class="filter-block">
+        <label class="form-label" data-i18n="category">Category</label>
+        <div class="chip-grid" id="filterCategoryChips"></div>
+      </div>
+
+      <div class="filter-block">
+        <label class="form-label" data-i18n="governorate">Governorate</label>
+        <select class="form-select" id="filterGovSelect"></select>
+      </div>
+
+      <div class="filter-actions">
+        <button class="btn-outline" id="filterResetBtn" data-i18n="reset">Reset</button>
+        <button class="btn-primary" id="filterApplyBtn" data-i18n="apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CLIQ RECEIPT MODAL ============ -->
+  <div class="modal-overlay" id="cliqModalOverlay">
+    <div class="modal-sheet">
+      <button class="modal-close" id="cliqModalClose">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <div class="modal-icon"><i class="fa-solid fa-receipt"></i></div>
+      <h2 class="modal-title" data-i18n="confirmPayment">Confirm Payment</h2>
+      <p class="modal-sub" data-i18n="cliqTransferMsg">Please transfer 1 JOD to CliQ Account - Dinarak Wallet (Alias: <strong>DAILYJOB1</strong>) and upload the receipt below.</p>
+
+      <div class="image-upload-area">
+        <input class="hidden" id="fReceipt" type="file" accept="image/*">
+        <button type="button" class="image-upload-btn" id="receiptUploadBtn">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span data-i18n="uploadReceipt">Upload Receipt</span>
+        </button>
+        <div class="image-preview-list" id="receiptPreviewList"></div>
+      </div>
+
+      <div class="form-error hidden" id="cliqModalError"></div>
+      <button class="btn-primary btn-block" id="confirmCliqBtn" style="margin-top:16px;">
+        <i class="fa-solid fa-check-circle"></i>
+        <span data-i18n="confirmPaymentAndPublish">Confirm & Publish</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
