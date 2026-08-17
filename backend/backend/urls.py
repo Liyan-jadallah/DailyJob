@@ -15,11 +15,26 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
-from core.views import CustomAuthToken 
+from django.urls import path, re_path, include
+from core.views import CustomAuthToken, index
+from django.views.static import serve
+from django.conf import settings
+from django.conf.urls.static import static
+import os
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('core.urls')), # هذا السطر سيقوم بتضمين جميع روابط الـ router والتفعيل تلقائياً
+    path('api/', include('core.urls')), 
     path('api/login/', CustomAuthToken.as_view(), name='api-login'), 
+    path('', index),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+urlpatterns.append(
+    re_path(r'^(?P<path>.*)$', serve, {
+        'document_root': os.path.join(settings.BASE_DIR.parent, 'dai'),
+        'show_indexes': False
+    })
+)

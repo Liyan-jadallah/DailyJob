@@ -8,9 +8,24 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.core.mail import send_mail
 from django.conf import settings
+from django.shortcuts import render
 
-from .models import User, PaymentMethod, Ad, Transaction
+from django.utils import timezone
+from datetime import timedelta
+from rest_framework.throttling import AnonRateThrottle
+from .permissions import IsUserOwner, IsOwnerOrReadOnly
+
+class OTPThrottle(AnonRateThrottle):
+    rate = '5/min'
+
+# أضفنا Notification هنا في قائمة الاستدعاءات
+from .models import User, PaymentMethod, Ad, Transaction, Notification
 from .serializers import UserSerializer, PaymentMethodSerializer, AdSerializer, TransactionSerializer
+
+
+def index(request):
+    return render(request, 'index.html')
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -19,7 +34,15 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [AllowAny()]
+        elif self.request.method in ['PUT', 'PATCH', 'DELETE']:
+            return [IsAuthenticated(), IsUserOwner()]
         return [IsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        if user != request.user:
+            return Response({'error': 'لا تملك صلاحية حذف هذا الحساب'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -55,6 +78,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OTPThrottle]
     
     def post(self, request):
         email = request.data.get('email')
@@ -79,6 +103,7 @@ class VerifyEmailView(APIView):
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OTPThrottle]
     
     def post(self, request):
         email = request.data.get('email')
@@ -104,6 +129,7 @@ class PasswordResetRequestView(APIView):
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [OTPThrottle]
     
     def post(self, request):
         email = request.data.get('email')
@@ -136,16 +162,64 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
 
 class AdViewSet(viewsets.ModelViewSet):
     queryset = Ad.objects.all()
     serializer_class = AdSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
+
+    def get_queryset(self):
+        now = timezone.now()
+        expiration_cutoff = now - timedelta(hours=24)
+        grace_period_cutoff = now - timedelta(minutes=10)
+        
+        # 1. Automation: Delete ads older than 24 hours
+        Ad.objects.filter(created_at__lt=expiration_cutoff).delete()
+        
+        # 2. Automation: Auto-approve pending ads older than 10 minutes
+        Ad.objects.filter(status='pending', created_at__lt=grace_period_cutoff).update(status='approved')
+        
+        # Base query: remaining ads (which are all <= 24 hours)
+        queryset = Ad.objects.select_related('user').all()
+        
+        # Admin can see everything
+        if self.request.user.is_authenticated and getattr(self.request.user, 'role', '') == 'admin':
+            return queryset
+            
+        # Public / normal users
+        from django.db.models import Q
+        if self.request.user.is_authenticated:
+            # Users see approved ads PLUS their own ads (pending/rejected)
+            return queryset.filter(Q(status='approved') | Q(user=self.request.user)).order_by('-created_at')
+        
+        return queryset.filter(status='approved').order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        # 1. Save the Ad instance
+        ad = serializer.save(user=self.request.user)
+        
+        # 2. Extract receipt_image from request data
+        receipt_image = self.request.data.get('receipt_image')
+        
+        # 3. Create a Transaction linked to the Ad and user
+        if receipt_image:
+            Transaction.objects.create(
+                ad=ad,
+                user=self.request.user,
+                receipt_image=receipt_image
+                # amount can be defaulted or set if available
+            )
+        
+        # 4. Explicitly create notification for admins since post_save signal might miss custom triggers if not handled
+        # Actually, the post_save signal on Ad already handles this, but let's ensure it's robust
+        # Check models.py for create_global_notification signal. It seems correct.
 
 
 class CustomAuthToken(ObtainAuthToken):
@@ -174,3 +248,26 @@ class CustomAuthToken(ObtainAuthToken):
             })
         else:
             return Response({'error': 'بيانات الدخول غير صحيحة'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ----------------------------------------------------
+# العرض الجديد الخاص بـ API الإشعارات
+# ----------------------------------------------------
+class UserNotificationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # جلب أحدث 20 إشعار للمستخدم مسجل الدخول
+        notifications = Notification.objects.filter(user=request.user).order_by('-created_at')[:20]
+        
+        # إعادة البيانات على شكل قائمة JSON مباشرة
+        data = [
+            {
+                "id": n.id,
+                "title": n.title,
+                "message": n.message,
+                "is_read": n.is_read,
+                "created_at": n.created_at
+            } for n in notifications
+        ]
+        return Response(data)

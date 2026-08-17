@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  const BASE_URL = "https://dailyjob.onrender.com/api";
+  const BASE_URL = "/api";
 
   const Api = {
     verifyEmail: async (email, otp) => {
@@ -74,18 +74,17 @@
       
       return data;
     },
-    getAds: async () => {
-      const res = await fetch(`${BASE_URL}/ads/`);
-      if (!res.ok) return [];
+    getAds: async (page = 1) => {
+      const res = await fetch(`${BASE_URL}/ads/?page=${page}`);
+      if (!res.ok) return { results: [], next: null };
       return await res.json();
     },
-    createAd: async (adData, token) => {
-      const res = await fetch(`${BASE_URL}/ads/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-        body: JSON.stringify(adData)
+    getNotifications: async (token) => {
+      const res = await fetch(`${BASE_URL}/notifications/`, {
+        method: 'GET',
+        headers: { 'Authorization': 'Token ' + token }
       });
-      if (!res.ok) throw new Error("حدث خطأ أثناء النشر.");
+      if (!res.ok) return [];
       return await res.json();
     },
     deleteAd: async (adId, token) => {
@@ -238,7 +237,7 @@
       loginSuccess: "Logged in successfully",
       registerSuccess: "Account created successfully",
       logoutSuccess: "Logged out successfully",
-      adPublished: "Your ad has been published successfully!",
+      adPublished: "Thank you, your ad will be published after 10 minutes",
       settingsSaved: "Settings saved successfully",
       fillAllFields: "Please fill in all fields",
       passwordsMismatch: "Passwords do not match",
@@ -345,7 +344,7 @@
       loginSuccess: "تم تسجيل الدخول بنجاح",
       registerSuccess: "تم إنشاء الحساب بنجاح",
       logoutSuccess: "تم تسجيل الخروج",
-      adPublished: "تم نشر إعلانك بنجاح!",
+      adPublished: "شكراً، سيتم نشر الإعلان بعد 10 دقائق",
       settingsSaved: "تم حفظ الإعدادات",
       fillAllFields: "الرجاء تعبئة جميع الحقول",
       passwordsMismatch: "كلمتا المرور غير متطابقتين",
@@ -399,11 +398,21 @@
   };
 
   let ads = [];
+  let currentAdsPage = 1;
+  let hasMoreAds = false;
 
-  async function loadAdsFromAPI() {
+  async function loadAdsFromAPI(page = 1, append = false) {
     try {
-      const dbAds = await Api.getAds();
-      ads = dbAds.map(dbAd => ({
+      if (!append) {
+        ads = [];
+        currentAdsPage = 1;
+      }
+      
+      const dbResponse = await Api.getAds(page);
+      const dbAds = dbResponse.results ? dbResponse.results : (Array.isArray(dbResponse) ? dbResponse : []);
+      hasMoreAds = !!dbResponse.next;
+      
+      const newAds = dbAds.map(dbAd => ({
         id: dbAd.id,
         type: dbAd.category,
         category: dbAd.category,
@@ -419,28 +428,50 @@
         createdAt: new Date(dbAd.created_at),
         user_email: dbAd.user_details?.email,
         mine: state.user && (dbAd.user === state.user.id || dbAd.user_details?.username === state.user.username),
-        image: dbAd.image_url || 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job'
+        image: dbAd.image ? dbAd.image : 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job'
       }));
+      
+      ads = [...ads, ...newAds];
       renderAds();
+      
+      const loadMoreBtn = document.getElementById("loadMoreAdsBtn");
+      if (loadMoreBtn) {
+        loadMoreBtn.style.display = hasMoreAds ? "block" : "none";
+      }
     } catch (e) {
       console.error("Failed to load ads", e);
+    }
+  }
+
+  window.loadMoreAds = function() {
+    if (hasMoreAds) {
+      const loadMoreBtn = document.getElementById("loadMoreAdsBtn");
+      if (loadMoreBtn) loadMoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+      
+      currentAdsPage++;
+      loadAdsFromAPI(currentAdsPage, true).then(() => {
+        if (loadMoreBtn) loadMoreBtn.innerHTML = 'Load More Ads';
+      });
+    }
+  };
+
+  async function fetchNotifications() {
+    const token = localStorage.getItem("dj_token");
+    if (state.isAuthenticated && token) {
+      try {
+        const data = await Api.getNotifications(token);
+        state.notifications = data;
+        renderNotifications();
+        updateNotificationDot();
+      } catch (e) {
+        console.error("Failed to fetch notifications", e);
+      }
     }
   }
 
   function minsAgo(n) {
     return new Date(Date.now() - n * 60000);
   }
-
-  state.notifications = [
-    {
-      id: "n1",
-      icon: "fa-circle-check",
-      title: { ar: "مرحباً بك في المنصة", en: "Welcome to the platform" },
-      body: { ar: "لقد تم تهيئة المنصة للعمل مع الخادم الحقيقي بنجاح.", en: "Platform has been configured to work with the real server successfully." },
-      minutesAgo: 1,
-      read: false
-    }
-  ];
 
   const elements = {
     authOverlay: document.getElementById("authOverlay"),
@@ -544,6 +575,7 @@
         showToast(t("loginSuccess"), "success");
       
         loadAdsFromAPI();
+        fetchNotifications();
 
         if (typeof state.pendingAction === "function") {
           const fn = state.pendingAction;
@@ -709,20 +741,31 @@
 
   function getFilteredAds() {
     const f = state.filters;
+    const query = f.query ? f.query.toLowerCase().split(/\s+/).filter(Boolean) : [];
+
     return ads.slice()
       .filter((ad) => {
+        // 1. Basic Filters
         if (f.type !== "all") {
           const adMainType = getMainCategory(ad.type);
           if (adMainType !== f.type) return false;
         }
         if (f.category !== "all" && f.category !== ad.category) return false;
         if (f.governorate !== "all" && ad.governorate !== f.governorate) return false;
-        if (f.query) {
-          const query = f.query.toLowerCase();
-          const matchesTitle = ad.title[state.lang].toLowerCase().includes(query);
-          const matchesDesc = ad.desc[state.lang].toLowerCase().includes(query);
-          const matchesArea = ad.area[state.lang].toLowerCase().includes(query);
-          if (!matchesTitle && !matchesDesc && !matchesArea) return false;
+
+        // 2. Smart Search
+        if (query.length > 0) {
+          const catName = getCategoryName(ad.category, state.lang).toLowerCase();
+          const govName = (GOV_MAP[ad.governorate]?.[state.lang] || ad.governorate).toLowerCase();
+          const title = ad.title[state.lang].toLowerCase();
+          const desc = ad.desc[state.lang].toLowerCase();
+
+          const searchableFields = [title, desc, catName, govName];
+
+          // Every word in the query must be found in at least one field
+          return query.every(word => 
+            searchableFields.some(field => field.includes(word))
+          );
         }
         return true;
       })
@@ -1046,18 +1089,18 @@
     if (emptyState) emptyState.classList.add("hidden");
     list.innerHTML = state.notifications.map((n) => `
       <div class="notif-item ${n.read ? "" : "unread"}" data-notif-id="${n.id}">
-        <div class="notif-icon"><i class="fa-solid ${n.icon}"></i></div>
+        <div class="notif-icon"><i class="fa-solid fa-bell"></i></div>
         <div class="notif-body">
-          <div class="notif-title">${escapeHtml(n.title[state.lang])}</div>
-          <div class="notif-text">${escapeHtml(n.body[state.lang])}</div>
-          <div class="notif-time">${formatRelative(minsAgo(n.minutesAgo))}</div>
+          <div class="notif-title">${escapeHtml(n.title)}</div>
+          <div class="notif-text">${escapeHtml(n.message)}</div>
+          <div class="notif-time">${formatRelative(new Date(n.created_at))}</div>
         </div>
       </div>`).join("");
 
     list.querySelectorAll(".notif-item").forEach(item => {
       item.addEventListener("click", () => {
         const notifId = item.dataset.notifId;
-        const notif = state.notifications.find(n => n.id === notifId);
+        const notif = state.notifications.find(n => n.id == notifId);
         if (notif) {
           notif.read = true;
           item.classList.remove("unread");
@@ -1165,46 +1208,40 @@
         btn.disabled = true;
       }
 
-      const getVal = (id) => document.getElementById(id)?.value.trim() || "";
-
-      const title = getVal("fTitle");
-      const governorate = getVal("fGovernorate");
-      const category = getVal("fCategory");
-      const wage = getVal("fWage");
-      const details = getVal("fDetails");
-      const phone = getVal("fPhone");
-      
-      const imagesInput = document.getElementById("fImages");
-      let base64Image = null;
-      if (imagesInput && imagesInput.files && imagesInput.files[0]) {
-        base64Image = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.readAsDataURL(imagesInput.files[0]);
-        });
+      const token = localStorage.getItem("dj_token");
+      if (!token) {
+        showToast("يرجى تسجيل الدخول أولاً", "error");
+        openAuth("login");
+        throw new Error("User not authenticated");
       }
 
-      const token = localStorage.getItem("dj_token");
-      if (!token) throw new Error("يرجى تسجيل الدخول أولاً");
+      const formData = new FormData();
+      formData.append("title", document.getElementById("fTitle").value.trim());
+      formData.append("description", document.getElementById("fDetails").value.trim());
+      formData.append("category", document.getElementById("fCategory").value.trim());
+      formData.append("governorate", document.getElementById("fGovernorate").value.trim());
+      formData.append("price", parseFloat(document.getElementById("fWage").value.trim()) || 0);
+      formData.append("contact_phone", document.getElementById("fPhone").value.trim());
+      
+      const imagesInput = document.getElementById("fImages");
+      if (imagesInput && imagesInput.files && imagesInput.files[0]) {
+        formData.append("image", imagesInput.files[0]);
+      }
+      
+      const receiptInput = document.getElementById("fReceipt");
+      if (receiptInput && receiptInput.files && receiptInput.files[0]) {
+        formData.append("receipt_image", receiptInput.files[0]);
+      }
 
-      const postData = {
-        title: title,
-        description: details,
-        category: category,
-        governorate: governorate,
-        price: parseFloat(wage) || 0,
-        contact_phone: phone,
-        ...(base64Image ? { image_url: base64Image } : {})
+      const headers = { 
+        'Authorization': 'Token ' + token 
       };
 
       if (state.currentEditAdId) {
         const res = await fetch(`${BASE_URL}/ads/${state.currentEditAdId}/`, {
           method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': `Token ${token}` 
-          },
-          body: JSON.stringify(postData)
+          headers: headers,
+          body: formData
         });
         if (!res.ok) throw new Error("حدث خطأ أثناء تعديل الإعلان.");
         showToast("تم تعديل الإعلان بنجاح", "success");
@@ -1212,11 +1249,8 @@
       } else {
         const res = await fetch(`${BASE_URL}/ads/`, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': `Token ${token}` 
-          },
-          body: JSON.stringify(postData)
+          headers: headers,
+          body: formData
         });
         if (!res.ok) throw new Error("حدث خطأ أثناء النشر.");
         showToast(t("adPublished"), "success");
@@ -1235,15 +1269,15 @@
       if (imgPreview) imgPreview.innerHTML = "";
       const receiptPreview = document.getElementById("receiptPreviewList");
       if (receiptPreview) receiptPreview.innerHTML = "";
-      const fReceipt = document.getElementById("fReceipt");
-      if (fReceipt) fReceipt.value = "";
       
       goToScreen("home");
 
     } catch (error) {
-      const errEl = document.getElementById("cliqModalError") || document.getElementById("addFormError");
-      if (errEl) showFormError(errEl, error.message || "حدث خطأ.");
-      else showToast(error.message, "error");
+      if (error.message !== "User not authenticated") {
+        const errEl = document.getElementById("cliqModalError") || document.getElementById("addFormError");
+        if (errEl) showFormError(errEl, error.message || "حدث خطأ.");
+        else showToast(error.message, "error");
+      }
       throw error;
     } finally {
       if (btn) {
@@ -1726,6 +1760,7 @@
     goToScreen("home");
 
     loadAdsFromAPI();
+    fetchNotifications();
   }
 
   if (document.readyState === "loading") {
@@ -1803,6 +1838,7 @@
         closeAuth();
         updateDrawerUser();
         showToast("تم تفعيل حسابك بنجاح!", "success");
+        fetchNotifications();
         
       } catch (error) {
         showFormError(errorEl, error.message);

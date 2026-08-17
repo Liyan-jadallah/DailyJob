@@ -7,7 +7,8 @@ from .views import (
     TransactionViewSet,
     VerifyEmailView,            # مسار تفعيل البريد
     PasswordResetRequestView,   # مسار طلب استعادة كلمة المرور
-    PasswordResetConfirmView    # مسار تأكيد كلمة المرور الجديدة
+    PasswordResetConfirmView,   # مسار تأكيد كلمة المرور الجديدة
+    UserNotificationsView       # <-- تمت الإضافة هنا (استدعاء الإشعارات)
 )
 
 router = DefaultRouter()
@@ -23,4 +24,7 @@ urlpatterns = [
     path('verify-email/', VerifyEmailView.as_view(), name='verify-email'),
     path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),
     path('password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    
+    # مسار الإشعارات الجديد
+    path('notifications/', UserNotificationsView.as_view(), name='user-notifications'), # <-- تمت الإضافة هنا
 ]

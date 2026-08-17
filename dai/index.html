@@ -10,7 +10,7 @@
     href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
@@ -101,6 +101,10 @@
         <i class="fa-regular fa-folder-open"></i>
         <p data-i18n="noResults">No results match your search</p>
       </div>
+
+      <button id="loadMoreAdsBtn" class="btn btn-outline" style="display: none; margin: 20px auto; width: 200px; text-align: center;" onclick="loadMoreAds()">
+        Load More Ads
+      </button>
     </main>
 
     <!-- ============ SCREEN: DETAILS ============ -->
@@ -708,7 +712,7 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast"></div>
 
-  <script src="script.js"></script>
+  <script src="/script.js?v=2"></script>
 </body>
 
 </html>
