@@ -175,6 +175,11 @@
         <button class="icon-round" id="shareBtn"><i class="fa-solid fa-share-nodes"></i></button>
         <button class="icon-round" id="favBtn"><i class="fa-regular fa-heart"></i></button>
         
+        <!-- زر التعديل (مخفي افتراضياً، يظهر لصاحب الإعلان فقط) -->
+        <button class="icon-round hidden" id="editAdBtn" style="color: #3b82f6; border-color: #3b82f6;">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+        
         <!-- زر الحذف الجديد للإعلان (مخفي افتراضياً، يظهر لصاحب الإعلان فقط) -->
         <button class="icon-round hidden" id="deleteAdBtn" style="color: #ef4444; border-color: #ef4444;">
           <i class="fa-solid fa-trash"></i>
@@ -188,7 +193,6 @@
         <button class="back-btn light" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
         <div class="abudinar-title">
           <span data-i18n="abuDinar">Abu Al-Dinar</span>
-          <small data-i18n="abuDinarSub">Best way to connect your service with employers</small>
         </div>
         <span class="topbar-spacer"></span>
       </div>
@@ -309,7 +313,20 @@
         <p data-i18n="noFavorites">You haven't added any favorites yet</p>
       </div>
     </main>
-
+    <!-- ============ SCREEN: ADMIN PANEL ============ -->
+    <main class="screen" id="screen-admin">
+      <div class="details-topbar">
+        <button class="back-btn" data-nav="home"><i class="fa-solid fa-arrow-left"></i></button>
+        <span data-i18n="adminPanel">Admin Panel</span>
+        <span class="topbar-spacer"></span>
+      </div>
+      <div class="ads-list" id="adminAdsList"></div>
+      <div class="empty-state hidden" id="adminEmptyState">
+        <i class="fa-solid fa-check-circle" style="color: #10b981; font-size: 3rem; margin-bottom: 12px;"></i>
+        <h3 data-i18n="noPendingAds">No pending ads</h3>
+        <p data-i18n="allCaughtUp">You're all caught up!</p>
+      </div>
+    </main>
     <!-- ============ SCREEN: MY LISTINGS ============ -->
     <main class="screen" id="screen-mylistings">
       <div class="details-topbar">
@@ -380,7 +397,6 @@
           <div class="toggle-row">
             <div class="toggle-text">
               <strong data-i18n="generalNotifs">General Notifications</strong>
-              <small data-i18n="generalNotifsDesc">Alerts about your account activity</small>
             </div>
             <label class="switch">
               <input type="checkbox" id="togglePush">
@@ -391,7 +407,6 @@
           <div class="toggle-row">
             <div class="toggle-text">
               <strong data-i18n="newMessages">New Messages</strong>
-              <small data-i18n="newMessagesDesc">When you receive a message from a user</small>
             </div>
             <label class="switch">
               <input type="checkbox" id="toggleMessages">
@@ -401,8 +416,7 @@
 
           <div class="toggle-row">
             <div class="toggle-text">
-              <strong data-i18n="offersNews">Offers & News</strong>
-              <small data-i18n="offersNewsDesc">Offers and updates from Daily Job</small>
+              <strong data-i18n="offersNews">Offers &amp; News</strong>
             </div>
             <label class="switch">
               <input type="checkbox" id="toggleMarketing">
@@ -420,8 +434,6 @@
         </div>
         <div class="settings-card">
           <select class="form-select" id="settingsGov"></select>
-          <small class="settings-hint" data-i18n="chooseGovDefault">Choose default governorate for displaying
-            ads</small>
         </div>
       </div>
 
@@ -444,7 +456,6 @@
               <i class="fa-solid fa-check lang-check"></i>
             </button>
           </div>
-          <small class="settings-hint" data-i18n="directionHint">Direction changes automatically (LTR/RTL)</small>
         </div>
       </div>
 
@@ -498,6 +509,12 @@
           <button data-nav="mylistings" data-auth-required>
             <i class="fa-regular fa-folder-open"></i>
             <span data-i18n="myAds">My Listings</span>
+          </button>
+        </li>
+        <li id="adminDrawerItem" class="hidden">
+          <button data-nav="admin">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span data-i18n="adminPanel">Admin Panel</span>
           </button>
         </li>
         <li>
@@ -690,7 +707,7 @@
 
       <div class="modal-icon"><i class="fa-solid fa-receipt"></i></div>
       <h2 class="modal-title" data-i18n="confirmPayment">Confirm Payment</h2>
-      <p class="modal-sub" data-i18n="cliqTransferMsg">Please transfer 1 JOD to CliQ Account - Dinarak Wallet (Alias: <strong>DAILYJOB1</strong>) and upload the receipt below.</p>
+      <p class="modal-sub" data-i18n-html="cliqTransferMsg">Please transfer 1 JOD to CliQ Account - Dinarak Wallet (Alias: <strong>DAILYJOB1</strong>) and upload the receipt below.</p>
 
       <div class="image-upload-area">
         <input class="hidden" id="fReceipt" type="file" accept="image/*">
@@ -712,7 +729,7 @@
   <!-- Toast Notification -->
   <div class="toast" id="toast"></div>
 
-  <script src="/script.js?v=2"></script>
+  <script src="/script.js?v=21"></script>
 </body>
 
 </html>

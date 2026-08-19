@@ -13,7 +13,8 @@ def send_global_notification_task(ad_id, ad_title, ad_owner_id):
         Notification(
             user_id=user.id,
             title="إعلان جديد!",
-            message=f"تم نشر إعلان جديد: {ad_title}"
+            message=f"تم نشر إعلان جديد: {ad_title}",
+            ad_id=ad_id
         ) for user in users
     ]
     

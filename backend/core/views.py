@@ -23,8 +23,11 @@ from .models import User, PaymentMethod, Ad, Transaction, Notification
 from .serializers import UserSerializer, PaymentMethodSerializer, AdSerializer, TransactionSerializer
 
 
-def index(request):
-    return render(request, 'index.html')
+from django.views.decorators.cache import never_cache
+
+@never_cache
+
+
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -187,39 +190,73 @@ class AdViewSet(viewsets.ModelViewSet):
         Ad.objects.filter(status='pending', created_at__lt=grace_period_cutoff).update(status='approved')
         
         # Base query: remaining ads (which are all <= 24 hours)
-        queryset = Ad.objects.select_related('user').all()
+        queryset = Ad.objects.select_related('user').all().order_by('-created_at')
+        
+        status_filter = self.request.query_params.get('status')
+        user_filter = self.request.query_params.get('user_id')
         
         # Admin can see everything
         if self.request.user.is_authenticated and getattr(self.request.user, 'role', '') == 'admin':
-            return queryset
+            pass
+        elif self.request.user.is_authenticated:
+            # Users see approved ads PLUS their own ads
+            from django.db.models import Q
+            queryset = queryset.filter(Q(status='approved') | Q(user=self.request.user))
+        else:
+            # Public / unauthenticated
+            queryset = queryset.filter(status='approved')
             
-        # Public / normal users
-        from django.db.models import Q
-        if self.request.user.is_authenticated:
-            # Users see approved ads PLUS their own ads (pending/rejected)
-            return queryset.filter(Q(status='approved') | Q(user=self.request.user)).order_by('-created_at')
-        
-        return queryset.filter(status='approved').order_by('-created_at')
+        # Apply specific filters if requested
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+            
+        if user_filter:
+            queryset = queryset.filter(user_id=user_filter)
+            
+        return queryset
 
     def perform_create(self, serializer):
+        from .models import AdImage
         # 1. Save the Ad instance
         ad = serializer.save(user=self.request.user)
         
-        # 2. Extract receipt_image from request data
+        # 2. Save all uploaded images (multiple images support)
+        images = self.request.FILES.getlist('images')
+        for img in images:
+            AdImage.objects.create(ad=ad, image=img)
+        
+        # 3. Extract receipt_image from request data
         receipt_image = self.request.data.get('receipt_image')
         
-        # 3. Create a Transaction linked to the Ad and user
+        # 4. Create a Transaction linked to the Ad and user
         if receipt_image:
             Transaction.objects.create(
                 ad=ad,
                 user=self.request.user,
                 receipt_image=receipt_image
-                # amount can be defaulted or set if available
             )
+
+    def perform_update(self, serializer):
+        from .models import AdImage
+        ad = serializer.save()
         
-        # 4. Explicitly create notification for admins since post_save signal might miss custom triggers if not handled
-        # Actually, the post_save signal on Ad already handles this, but let's ensure it's robust
-        # Check models.py for create_global_notification signal. It seems correct.
+        # تحديث الصور الإضافية إذا قام المستخدم برفع صور جديدة
+        images = self.request.FILES.getlist('images')
+        if images:
+            # حذف الصور القديمة
+            AdImage.objects.filter(ad=ad).delete()
+            # إضافة الصور الجديدة
+            for img in images:
+                AdImage.objects.create(ad=ad, image=img)
+                
+        # تحديث وصل الدفع إن وجد
+        receipt_image = self.request.data.get('receipt_image')
+        if receipt_image:
+            Transaction.objects.create(
+                ad=ad,
+                user=self.request.user,
+                receipt_image=receipt_image
+            )
 
 
 class CustomAuthToken(ObtainAuthToken):
@@ -244,7 +281,8 @@ class CustomAuthToken(ObtainAuthToken):
                 'token': token.key,
                 'user_id': str(user.pk),
                 'email': user.email,
-                'username': user.username
+                'username': user.username,
+                'role': user.role
             })
         else:
             return Response({'error': 'بيانات الدخول غير صحيحة'}, status=status.HTTP_400_BAD_REQUEST)
@@ -257,17 +295,38 @@ class UserNotificationsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # جلب أحدث 20 إشعار للمستخدم مسجل الدخول
-        notifications = Notification.objects.filter(user=request.user).order_by('-created_at')[:20]
-        
-        # إعادة البيانات على شكل قائمة JSON مباشرة
+        # حذف الإشعارات الأقدم من 24 ساعة تلقائياً
+        cutoff = timezone.now() - timedelta(hours=24)
+        Notification.objects.filter(user=request.user, created_at__lt=cutoff).delete()
+
+        # جلب أحدث 30 إشعار للمستخدم
+        notifications = Notification.objects.filter(user=request.user).order_by('-created_at')[:30]
+
         data = [
             {
                 "id": n.id,
                 "title": n.title,
                 "message": n.message,
+                "ad_id": str(n.ad_id) if n.ad_id else None,
                 "is_read": n.is_read,
                 "created_at": n.created_at
             } for n in notifications
         ]
         return Response(data)
+
+    def patch(self, request):
+        """تحديث حالة قراءة إشعار أو كل الإشعارات"""
+        notif_id = request.data.get('id')
+        mark_all = request.data.get('mark_all', False)
+
+        if mark_all:
+            Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+            return Response({'status': 'all_marked_read'})
+
+        if notif_id:
+            updated = Notification.objects.filter(id=notif_id, user=request.user).update(is_read=True)
+            if updated:
+                return Response({'status': 'marked_read'})
+            return Response({'error': 'Notification not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'error': 'Provide id or mark_all=true'}, status=status.HTTP_400_BAD_REQUEST)

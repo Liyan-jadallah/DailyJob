@@ -63,22 +63,63 @@ class Ad(models.Model):
 
     def save(self, *args, **kwargs):
         is_newly_active = (
-            self.pk is not None and 
-            self.__original_status != 'approved' and 
+            self.pk is not None and
+            self.__original_status != 'approved' and
             self.status == 'approved'
+        )
+        is_newly_rejected = (
+            self.pk is not None and
+            self.__original_status != 'rejected' and
+            self.status == 'rejected'
         )
         super().save(*args, **kwargs)
         self.__original_status = self.status
 
         if is_newly_active:
+            # 1. إرسال إشعار شخصي لصاحب الإعلان بالقبول
+            try:
+                Notification.objects.create(
+                    user=self.user,
+                    title="✅ تم نشر إعلانك",
+                    message=f"تمت الموافقة على إعلانك '{self.title}' وهو الآن متاح للجميع.",
+                    ad_id=self.id
+                )
+            except Exception:
+                pass
+
+            # 2. إرسال إشعار عام للجميع (عبر Celery)
             try:
                 from .tasks import send_global_notification_task
                 send_global_notification_task.delay(self.id, self.title, self.user.id)
             except Exception:
                 pass
 
+        if is_newly_rejected:
+            # إرسال إشعار شخصي لصاحب الإعلان بالرفض
+            try:
+                Notification.objects.create(
+                    user=self.user,
+                    title="❌ تم رفض إعلانك",
+                    message=f"للأسف تم رفض إعلانك '{self.title}'. يمكنك التواصل معنا لمعرفة السبب.",
+                    ad_id=self.id
+                )
+            except Exception:
+                pass
+
     def __str__(self):
         return self.title
+
+
+class AdImage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ad = models.ForeignKey(Ad, on_delete=models.CASCADE, related_name='extra_images')
+    image = models.ImageField(upload_to='ads/images/')
+
+    class Meta:
+        db_table = 'ad_images'
+
+    def __str__(self):
+        return f"Image for ad {self.ad_id}"
 
 
 class Transaction(models.Model):
@@ -107,6 +148,7 @@ class Notification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')
     title = models.CharField(max_length=255)
     message = models.TextField()
+    ad_id = models.UUIDField(null=True, blank=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

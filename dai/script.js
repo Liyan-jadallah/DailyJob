@@ -8,7 +8,9 @@
 (function () {
   "use strict";
 
-  const BASE_URL = "/api";
+  const BASE_URL = (window.origin === 'http://localhost' || window.location.protocol === 'file:') 
+    ? "http://192.168.1.190:8000/api" 
+    : "/api";
 
   const Api = {
     verifyEmail: async (email, otp) => {
@@ -54,21 +56,33 @@
         user: { 
           id: data.user_id, 
           email: email, 
-          username: data.username || email.split('@')[0] 
+          username: data.username || email.split('@')[0],
+          role: data.role || 'user'
         }
       };
     },
     register: async (email, username, password) => {
+      // Django's default username validator doesn't allow spaces. Replace with underscores.
+      const safeUsername = username.replace(/\s+/g, '_');
+      
       const res = await fetch(`${BASE_URL}/users/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username, password })
+        body: JSON.stringify({ email, username: safeUsername, password })
       });
       
       const data = await res.json();
       
       if (!res.ok) {
-        const errorMsg = data.email?.[0] || data.username?.[0] || data.error || data.detail || "فشل في إنشاء الحساب، تحقق من البيانات.";
+        let errorMsg = data.email?.[0] || data.username?.[0] || data.error || data.detail || "فشل في إنشاء الحساب، تحقق من البيانات.";
+        
+        // Translate common Django DRF errors
+        if (state.lang === 'ar') {
+          if (errorMsg.includes("username already exists")) errorMsg = "اسم المستخدم هذا مسجل مسبقاً.";
+          else if (errorMsg.includes("email already exists")) errorMsg = "هذا البريد الإلكتروني مسجل مسبقاً.";
+          else if (errorMsg.includes("valid username")) errorMsg = "اسم المستخدم يجب أن يحتوي على أحرف وأرقام فقط.";
+        }
+        
         throw new Error(errorMsg);
       }
       
@@ -102,6 +116,43 @@
       });
       if (!res.ok) throw new Error("حدث خطأ أثناء حذف الحساب.");
       return true;
+    },
+    markNotificationRead: async (notifId, token) => {
+      // تعديل 4: حفظ حالة القراءة في السيرفر
+      try {
+        await fetch(`${BASE_URL}/notifications/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Token ' + token },
+          body: JSON.stringify({ id: notifId })
+        });
+      } catch (e) { /* silent fail */ }
+    },
+    markAllNotificationsRead: async (token) => {
+      // تعديل 4: تعليم كل الإشعارات مقروءة في السيرفر
+      try {
+        await fetch(`${BASE_URL}/notifications/`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Token ' + token },
+          body: JSON.stringify({ mark_all: true })
+        });
+      } catch (e) { /* silent fail */ }
+    },
+    getAdsSilent: async (page = 1) => {
+      // تعديل 3: جلب صامت للإعلانات بدون throwing
+      try {
+        const res = await fetch(`${BASE_URL}/ads/?page=${page}`);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (e) {
+        return null;
+      }
+    },
+    getAd: async (id) => {
+      const token = localStorage.getItem("dj_token");
+      const headers = token ? { 'Authorization': `Token ${token}` } : {};
+      const res = await fetch(`${BASE_URL}/ads/${id}/`, { headers });
+      if (!res.ok) throw new Error("الإعلان غير متوفر أو تم حذفه");
+      return await res.json();
     }
   };
 
@@ -242,7 +293,7 @@
       fillAllFields: "Please fill in all fields",
       passwordsMismatch: "Passwords do not match",
       invalidEmail: "Invalid email address",
-      invalidPhone: "Invalid phone number (10 digits)",
+      invalidPhone: "Phone must start with 07 and be 10 digits (e.g. 07XXXXXXXX)",
       titleRequired: "Title is required",
       wageRequired: "Wage is required",
       phoneRequired: "Phone number is required",
@@ -349,7 +400,7 @@
       fillAllFields: "الرجاء تعبئة جميع الحقول",
       passwordsMismatch: "كلمتا المرور غير متطابقتين",
       invalidEmail: "البريد الإلكتروني غير صالح",
-      invalidPhone: "رقم الهاتف غير صالح (10 أرقام)",
+      invalidPhone: "رقم الهاتف يجب أن يبدأ بـ 07 ويتكون من 10 أرقام",
       titleRequired: "العنوان مطلوب",
       wageRequired: "الأجر مطلوب",
       phoneRequired: "رقم التواصل مطلوب",
@@ -428,7 +479,9 @@
         createdAt: new Date(dbAd.created_at),
         user_email: dbAd.user_details?.email,
         mine: state.user && (dbAd.user === state.user.id || dbAd.user_details?.username === state.user.username),
-        image: dbAd.image ? dbAd.image : 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job'
+        image: dbAd.image ? dbAd.image : 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job',
+        extra_images: dbAd.extra_images || [],
+        status: dbAd.status || 'approved'
       }));
       
       ads = [...ads, ...newAds];
@@ -454,6 +507,77 @@
       });
     }
   };
+
+  // تعديل 3: Background polling - تحديث صامت كل 45 ثانية
+  let _pollingInterval = null;
+  function startSilentPolling() {
+    if (_pollingInterval) return; // تجنب التكرار
+    _pollingInterval = setInterval(async () => {
+      // لا نحدث إذا كان المستخدم في منتصف نموذج أو شاشة تفاصيل
+      const activeScreen = document.querySelector('.screen.active, .screen[style*="display: block"]');
+      const activeScreenId = activeScreen?.id || '';
+      if (['screen-add', 'screen-edit', 'screen-details'].includes(activeScreenId)) return;
+
+      const freshData = await Api.getAdsSilent(1);
+      if (!freshData || !freshData.results) return;
+
+      const freshIds = new Set(freshData.results.map(a => a.id));
+      const currentIds = new Set(ads.map(a => a.id));
+
+      // هل هناك إعلانات جديدة أو محذوفة؟
+      const hasChanges = freshData.results.some(a => !currentIds.has(a.id)) ||
+                         ads.some(a => a.status === 'approved' && !freshIds.has(a.id));
+
+      if (hasChanges) {
+        // تحديث صامت: دمج الجديد مع الموجود بدون إعادة رسم كاملة
+        const newMapped = freshData.results.map(dbAd => ({
+          id: dbAd.id,
+          type: dbAd.category,
+          category: dbAd.category,
+          governorate: dbAd.governorate,
+          area: { ar: dbAd.governorate, en: dbAd.governorate },
+          title: { ar: dbAd.title, en: dbAd.title },
+          desc: { ar: dbAd.description, en: dbAd.description },
+          price: parseFloat(dbAd.price) || 0,
+          currency: "JOD",
+          wageType: "fixed",
+          phone: dbAd.contact_phone,
+          contactMethod: "both",
+          createdAt: new Date(dbAd.created_at),
+          user_email: dbAd.user_details?.email,
+          mine: state.user && (dbAd.user === state.user.id || dbAd.user_details?.username === state.user.username),
+          image: dbAd.image ? dbAd.image : 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job',
+          extra_images: dbAd.extra_images || [],
+          status: dbAd.status || 'approved'
+        }));
+
+        // الاحتفاظ بالصفحات الإضافية المحملة وإضافة الجديدة في البداية
+        const page2PlusAds = ads.filter(a => !currentIds.has(a.id) || 
+          !freshData.results.find(f => f.id === a.id));
+        ads = [...newMapped, ...page2PlusAds.filter(a => !freshIds.has(a.id))];
+        renderAds();
+      }
+
+      // تحديث صامت للإشعارات كذلك
+      if (state.isAuthenticated) {
+        const token = localStorage.getItem("dj_token");
+        if (token) {
+          try {
+            const notifData = await Api.getNotifications(token);
+            state.notifications = notifData;
+            updateNotificationDot();
+          } catch(e) { /* silent */ }
+        }
+      }
+    }, 45000); // كل 45 ثانية
+  }
+
+  function stopSilentPolling() {
+    if (_pollingInterval) {
+      clearInterval(_pollingInterval);
+      _pollingInterval = null;
+    }
+  }
 
   async function fetchNotifications() {
     const token = localStorage.getItem("dj_token");
@@ -691,6 +815,18 @@
     const targetScreen = document.getElementById("screen-" + name);
     if (targetScreen) targetScreen.classList.add("active");
 
+    // تعديل: حفظ الشاشة الحالية في sessionStorage لكي لا تضيع عند التحديث
+    sessionStorage.setItem("dj_lastScreen", name);
+    if (name === "details" && state.currentAdId) {
+      sessionStorage.setItem("dj_lastAdId", state.currentAdId);
+    } else if (name === "add") {
+      if (state.currentEditAdId) {
+        sessionStorage.setItem("dj_lastEditAdId", state.currentEditAdId);
+      } else {
+        sessionStorage.removeItem("dj_lastEditAdId");
+      }
+    }
+
     switch (name) {
       case "home": renderAds(); break;
       case "notifications": renderNotifications(); break;
@@ -699,6 +835,9 @@
         break;
       case "mylistings":
         renderAdList("mineList", "mineEmptyState", ads.filter((a) => a.mine));
+        break;
+      case "admin":
+        renderAdminAds();
         break;
       case "settings": updateSettingsPage(); break;
     }
@@ -798,7 +937,7 @@
         <div class="ad-image-wrapper">
           <img src="${ad.image || 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job'}" alt="Ad Cover">
         </div>
-        ${ad.mine ? '<span class="ad-mine-tag">' + t("myAd") + '</span>' : ''}
+        ${ad.mine ? `<span class="ad-mine-tag" style="${ad.status === 'pending' ? 'background:orange;' : (ad.status === 'rejected' ? 'background:red;' : '')}">${ad.status === 'pending' ? (state.lang === 'ar' ? 'قيد المراجعة' : 'Pending') : (ad.status === 'rejected' ? (state.lang === 'ar' ? 'مرفوض' : 'Rejected') : t("myAd"))}</span>` : ''}
         <div class="ad-card-top">
           <span class="ad-badge ${badgeClass}">${catName}</span>
           <h3 class="ad-title">${escapeHtml(ad.title[state.lang])}</h3>
@@ -854,6 +993,121 @@
     });
   }
 
+  async function renderAdminAds() {
+    const list = document.getElementById("adminAdsList");
+    const empty = document.getElementById("adminEmptyState");
+    if (!list) return;
+    
+    list.innerHTML = '<div style="text-align:center; padding:40px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i></div>';
+    
+    try {
+       const token = localStorage.getItem("dj_token");
+       const res = await fetch(`${BASE_URL}/ads/?status=pending`, { 
+         headers: { 'Authorization': 'Token ' + token } 
+       });
+       const data = await res.json();
+       const pendingAds = data.results || data || [];
+       
+       if (!pendingAds.length) { 
+         list.innerHTML = ""; 
+         if (empty) empty.classList.remove("hidden"); 
+       } else { 
+         if (empty) empty.classList.add("hidden"); 
+         list.innerHTML = pendingAds.map(ad => {
+           const adTitle = typeof ad.title === 'object' ? (ad.title.ar || ad.title.en) : ad.title;
+           const adDesc = typeof ad.description === 'object' ? (ad.description.ar || ad.description.en) : ad.description;
+           
+           // Build images for admin panel
+           const allImages = [];
+           if (ad.image) allImages.push(ad.image);
+           if (ad.extra_images && ad.extra_images.length > 0) {
+             ad.extra_images.forEach(img => {
+               if (img.image && !allImages.includes(img.image)) allImages.push(img.image);
+             });
+           }
+           let imagesHtml = '';
+           if (allImages.length > 1) {
+             imagesHtml = `
+               <div style="display:flex; overflow-x:auto; gap:8px; padding:10px 15px; background:#f8f9fa;">
+                 ${allImages.map(src => `<a href="${src}" target="_blank"><img src="${src}" style="height:100px; min-width:100px; object-fit:cover; border-radius:8px; border:1px solid #dee2e6;"></a>`).join('')}
+               </div>
+             `;
+           } else if (allImages.length === 1) {
+             imagesHtml = `<a href="${allImages[0]}" target="_blank"><img src="${allImages[0]}" style="width:100%; height:180px; object-fit:cover;"></a>`;
+           }
+
+           return `
+            <div class="ad-card" style="margin-bottom:15px; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+              ${imagesHtml}
+              <div class="ad-card-top" style="padding:15px; display:flex; justify-content:space-between; align-items:flex-start;">
+                <div style="flex:1; min-width:0;">
+                  <h3 style="margin:0 0 5px 0; font-size:15px;">${escapeHtml(adTitle)}</h3>
+                  <p style="margin:0 0 8px 0; color:#666; font-size:13px;">${escapeHtml(adDesc).substring(0,80)}...</p>
+                  <p style="margin:0; font-size:13px;"><strong>📞</strong> ${ad.contact_phone}</p>
+                </div>
+                ${ad.receipt_image ? `
+                  <div style="margin-right: 10px; flex-shrink:0;">
+                    <p style="margin:0 0 4px 0; font-size:11px; color:#888; text-align:center;">وصل الدفع</p>
+                    <a href="${ad.receipt_image}" target="_blank">
+                      <img src="${ad.receipt_image}" style="width:70px;height:70px;object-fit:cover;border-radius:8px; border:2px solid #e9ecef;">
+                    </a>
+                  </div>` : '<p style="color:#f59e0b; font-size:12px; margin:0;">⚠️ لا يوجد وصل</p>'}
+              </div>
+              <div class="ad-bottom" style="display:flex; gap:10px; padding:12px 15px; border-top:1px solid #f1f3f5;">
+                <button class="btn-primary admin-approve-btn" data-id="${ad.id}" style="background:#10b981;border:none;flex:1; padding:10px; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer;"><i class="fa-solid fa-check"></i> قبول</button>
+                <button class="btn-primary admin-reject-btn" data-id="${ad.id}" style="background:#ef4444;border:none;flex:1; padding:10px; border-radius:8px; color:#fff; font-weight:bold; cursor:pointer;"><i class="fa-solid fa-xmark"></i> رفض</button>
+              </div>
+            </div>`;
+         }).join(""); 
+         
+         // Attach events
+         list.querySelectorAll(".admin-approve-btn").forEach(btn => {
+           btn.addEventListener("click", async () => {
+             btn.disabled = true;
+             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+             try {
+               const r = await fetch(`${BASE_URL}/ads/${btn.dataset.id}/`, {
+                 method: 'PATCH',
+                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Token ' + token },
+                 body: JSON.stringify({ status: 'approved' })
+               });
+               if (r.ok) {
+                 showToast("Ad Approved", "success");
+                 renderAdminAds();
+               } else throw new Error("Failed");
+             } catch(e) {
+               showToast("Error approving ad", "error");
+               btn.disabled = false;
+             }
+           });
+         });
+         
+         list.querySelectorAll(".admin-reject-btn").forEach(btn => {
+           btn.addEventListener("click", async () => {
+             btn.disabled = true;
+             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+             try {
+               const r = await fetch(`${BASE_URL}/ads/${btn.dataset.id}/`, {
+                 method: 'PATCH',
+                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Token ' + token },
+                 body: JSON.stringify({ status: 'rejected' })
+               });
+               if (r.ok) {
+                 showToast("Ad Rejected", "success");
+                 renderAdminAds();
+               } else throw new Error("Failed");
+             } catch(e) {
+               showToast("Error rejecting ad", "error");
+               btn.disabled = false;
+             }
+           });
+         });
+       }
+    } catch(err) {
+       list.innerHTML = `<div style="text-align:center; color:red; padding:20px;">${err.message}</div>`;
+    }
+  }
+
   function renderAds() {
     const filtered = getFilteredAds();
     renderAdList("adsList", "homeEmptyState", filtered);
@@ -864,15 +1118,148 @@
     updateActiveFiltersDisplay();
   }
 
-  function openDetails(adId) {
+  // ===== تعديل 5: Lightbox =====
+  let _lightboxImages = [];
+  let _lightboxIdx = 0;
+  let _lightboxZoom = 1;
+
+  function openLightbox(images, startIdx = 0) {
+    _lightboxImages = images;
+    _lightboxIdx = startIdx;
+    _lightboxZoom = 1;
+
+    // إنشاء الـ Lightbox إذا لم يكن موجوداً
+    let lb = document.getElementById("lbOverlay");
+    if (!lb) {
+      lb = document.createElement("div");
+      lb.id = "lbOverlay";
+      lb.style.cssText = `
+        position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.92);
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        touch-action:pinch-zoom;
+      `;
+      lb.innerHTML = `
+        <button id="lbClose" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;
+          color:#fff;font-size:24px;width:44px;height:44px;border-radius:50%;cursor:pointer;z-index:1;
+          display:flex;align-items:center;justify-content:center;">✕</button>
+        <button id="lbPrev" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);
+          border:none;color:#fff;font-size:26px;width:44px;height:44px;border-radius:50%;cursor:pointer;z-index:1;
+          display:flex;align-items:center;justify-content:center;">‹</button>
+        <div id="lbImgWrap" style="max-width:95vw;max-height:85vh;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+          <img id="lbImg" style="max-width:95vw;max-height:85vh;object-fit:contain;transition:transform 0.2s;transform-origin:center;cursor:zoom-in;border-radius:6px;">
+        </div>
+        <button id="lbNext" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);
+          border:none;color:#fff;font-size:26px;width:44px;height:44px;border-radius:50%;cursor:pointer;z-index:1;
+          display:flex;align-items:center;justify-content:center;">›</button>
+        <div id="lbCounter" style="position:absolute;bottom:20px;color:#fff;font-size:13px;opacity:0.7;"></div>
+      `;
+      document.body.appendChild(lb);
+
+      document.getElementById("lbClose").addEventListener("click", closeLightbox);
+      lb.addEventListener("click", e => { if (e.target === lb) closeLightbox(); });
+      document.getElementById("lbPrev").addEventListener("click", e => { e.stopPropagation(); lbNav(-1); });
+      document.getElementById("lbNext").addEventListener("click", e => { e.stopPropagation(); lbNav(1); });
+
+      // Zoom بالضغط على الصورة
+      document.getElementById("lbImg").addEventListener("click", e => {
+        e.stopPropagation();
+        _lightboxZoom = _lightboxZoom > 1 ? 1 : 2.5;
+        const img = document.getElementById("lbImg");
+        img.style.transform = `scale(${_lightboxZoom})`;
+        img.style.cursor = _lightboxZoom > 1 ? "zoom-out" : "zoom-in";
+      });
+
+      // Keyboard navigation
+      document.addEventListener("keydown", lbKeyHandler);
+
+      // Touch swipe
+      let touchStartX = 0;
+      lb.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+      lb.addEventListener("touchend", e => {
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        if (Math.abs(dx) > 50) lbNav(dx < 0 ? 1 : -1);
+      });
+    }
+
+    lb.style.display = "flex";
+    lbRender();
+  }
+
+  function lbRender() {
+    const img = document.getElementById("lbImg");
+    const counter = document.getElementById("lbCounter");
+    const prev = document.getElementById("lbPrev");
+    const next = document.getElementById("lbNext");
+    if (!img) return;
+
+    _lightboxZoom = 1;
+    img.style.transform = "scale(1)";
+    img.style.cursor = "zoom-in";
+    img.src = _lightboxImages[_lightboxIdx];
+    if (counter) counter.textContent = `${_lightboxIdx + 1} / ${_lightboxImages.length}`;
+    if (prev) prev.style.display = _lightboxImages.length > 1 ? "flex" : "none";
+    if (next) next.style.display = _lightboxImages.length > 1 ? "flex" : "none";
+  }
+
+  function lbNav(dir) {
+    _lightboxIdx = (_lightboxIdx + dir + _lightboxImages.length) % _lightboxImages.length;
+    lbRender();
+  }
+
+  function lbKeyHandler(e) {
+    const lb = document.getElementById("lbOverlay");
+    if (!lb || lb.style.display === "none") return;
+    if (e.key === "Escape") closeLightbox();
+    else if (e.key === "ArrowLeft") lbNav(-1);
+    else if (e.key === "ArrowRight") lbNav(1);
+  }
+
+  function closeLightbox() {
+    const lb = document.getElementById("lbOverlay");
+    if (lb) lb.style.display = "none";
+    _lightboxZoom = 1;
+  }
+  // ===== نهاية Lightbox =====
+
+  async function openDetails(adId) {
     if (!state.isAuthenticated) {
       state.pendingAction = () => {
         state.currentAdId = adId;
-        renderDetails(adId);
-        goToScreen("details");
+        openDetails(adId);
       };
       openAuth("login");
       return;
+    }
+
+    // إذا لم يكن الإعلان محملاً محلياً، نجلبه من السيرفر
+    if (!ads.some(a => String(a.id) === String(adId))) {
+      try {
+        const dbAd = await Api.getAd(adId);
+        const newAd = {
+          id: dbAd.id,
+          type: dbAd.category,
+          category: dbAd.category,
+          governorate: dbAd.governorate,
+          area: { ar: dbAd.governorate, en: dbAd.governorate },
+          title: { ar: dbAd.title, en: dbAd.title },
+          desc: { ar: dbAd.description, en: dbAd.description },
+          price: parseFloat(dbAd.price) || 0,
+          currency: "JOD",
+          wageType: "fixed",
+          phone: dbAd.contact_phone,
+          contactMethod: "both",
+          createdAt: new Date(dbAd.created_at),
+          user_email: dbAd.user_details?.email,
+          mine: state.user && (dbAd.user === state.user.id || dbAd.user_details?.username === state.user.username),
+          image: dbAd.image ? dbAd.image : 'https://placehold.co/400x300/e9ecef/495057?text=Daily+Job',
+          extra_images: dbAd.extra_images || [],
+          status: dbAd.status || 'approved'
+        };
+        ads.push(newAd);
+      } catch (err) {
+        showToast(err.message, "error");
+        return;
+      }
     }
 
     state.currentAdId = adId;
@@ -881,7 +1268,7 @@
   }
 
   function renderDetails(adId) {
-    const ad = ads.find((a) => a.id === adId);
+    const ad = ads.find((a) => String(a.id) === String(adId));
     if (!ad) return;
 
     const isFav = state.favorites.has(ad.id);
@@ -894,20 +1281,93 @@
       const oldImg = detailsCard.querySelector(".ad-details-image-wrapper");
       if (oldImg) oldImg.remove();
 
-      const imgHtml = `
-        <div class="ad-details-image-wrapper">
-          <img src="${ad.image || 'https://placehold.co/800x400/e9ecef/495057?text=Daily+Job'}" alt="Ad Image">
+      // Build images list: main + extra
+      const allImages = [];
+      if (ad.image) allImages.push(ad.image);
+      if (ad.extra_images && ad.extra_images.length > 0) {
+        ad.extra_images.forEach(img => {
+          if (img.image && !allImages.includes(img.image)) allImages.push(img.image);
+        });
+      }
+
+      // تعديل 5: Lightbox — معرض صور مع تكبير عند الضغط
+      // === تصميم: صورة رئيسية + مصغرات مربعة ===
+      const mainSrc = allImages[0] || 'https://placehold.co/800x400/e9ecef/495057?text=Daily+Job';
+
+      let imgHtml = `
+        <div class="ad-details-image-wrapper" id="adGalleryWrapper">
+          <!-- الصورة الرئيسية -->
+          <img id="adMainImage"
+            src="${mainSrc}"
+            alt="الصورة الرئيسية"
+            data-lightbox-src="${mainSrc}"
+            data-lightbox-idx="0"
+            style="width:100%; height:280px; object-fit:cover; cursor:zoom-in; display:block; border-radius:12px 12px 0 0;">
+
+          ${allImages.length > 1 ? `
+          <!-- المصغرات -->
+          <div id="adThumbnails" style="
+            display:flex; gap:6px; padding:8px 10px;
+            background:#f8f9fa; border-radius:0 0 12px 12px;
+            overflow-x:auto; -webkit-overflow-scrolling:touch;
+          ">
+            ${allImages.map((src, i) => `
+              <img
+                src="${src}"
+                alt="صورة ${i+1}"
+                class="ad-thumb ${i === 0 ? 'thumb-active' : ''}"
+                data-idx="${i}"
+                style="
+                  width:64px; height:64px; object-fit:cover;
+                  border-radius:8px; flex-shrink:0; cursor:pointer;
+                  border: 2px solid ${i === 0 ? 'var(--orange)' : '#dee2e6'};
+                  transition: border-color 0.2s, transform 0.15s;
+                "
+              >
+            `).join('')}
+          </div>` : ''}
         </div>`;
+
       detailsCard.insertAdjacentHTML("afterbegin", imgHtml);
+
+      // === ربط أحداث المعرض ===
+      const mainImg = detailsCard.querySelector("#adMainImage");
+      const thumbs  = detailsCard.querySelectorAll(".ad-thumb");
+
+      // Lightbox عند الضغط على الصورة الرئيسية
+      if (mainImg) {
+        mainImg.addEventListener("click", () => {
+          const idx = parseInt(mainImg.getAttribute("data-lightbox-idx") || "0");
+          openLightbox(allImages, idx);
+        });
+      }
+
+      // تبديل الصورة الرئيسية عند الضغط على مصغرة
+      thumbs.forEach(thumb => {
+        thumb.addEventListener("click", () => {
+          const idx = parseInt(thumb.dataset.idx);
+          if (mainImg) {
+            mainImg.src = allImages[idx];
+            mainImg.setAttribute("data-lightbox-idx", idx);
+          }
+          thumbs.forEach(t => {
+            t.style.border = "2px solid #dee2e6";
+            t.classList.remove("thumb-active");
+          });
+          thumb.style.border = "2px solid var(--orange)";
+          thumb.classList.add("thumb-active");
+        });
+      });
     }
 
     const deleteAdBtn = document.getElementById("deleteAdBtn");
-    if (deleteAdBtn) {
-      if (state.user && state.user.email && ad.user_email && state.user.email.toLowerCase() === ad.user_email.toLowerCase()) {
-        deleteAdBtn.classList.remove("hidden");
-      } else {
-        deleteAdBtn.classList.add("hidden");
-      }
+    const editAdBtn = document.getElementById("editAdBtn");
+    if (state.user && state.user.email && ad.user_email && state.user.email.toLowerCase() === ad.user_email.toLowerCase()) {
+      if (deleteAdBtn) deleteAdBtn.classList.remove("hidden");
+      if (editAdBtn) editAdBtn.classList.remove("hidden");
+    } else {
+      if (deleteAdBtn) deleteAdBtn.classList.add("hidden");
+      if (editAdBtn) editAdBtn.classList.add("hidden");
     }
 
     const setTxt = (id, val) => {
@@ -1030,6 +1490,8 @@
 
     if (!nameEl) return;
 
+    const adminDrawerItem = document.getElementById("adminDrawerItem");
+
     if (state.isAuthenticated && state.user) {
       nameEl.textContent = state.user.username;
       if (subEl) subEl.textContent = state.user.email;
@@ -1037,6 +1499,10 @@
       if (avatarEl) {
         avatarEl.innerHTML = `<i class="fa-solid fa-user-check"></i>`;
         avatarEl.style.background = "var(--orange-tint)";
+      }
+      if (adminDrawerItem) {
+        if (state.user.role === 'admin') adminDrawerItem.classList.remove("hidden");
+        else adminDrawerItem.classList.add("hidden");
       }
     } else {
       nameEl.textContent = t("guest");
@@ -1046,6 +1512,7 @@
         avatarEl.innerHTML = `<i class="fa-regular fa-user"></i>`;
         avatarEl.style.background = "var(--orange-tint)";
       }
+      if (adminDrawerItem) adminDrawerItem.classList.add("hidden");
     }
   }
 
@@ -1073,7 +1540,8 @@
     const emptyState = document.getElementById("notifEmptyState");
     if (!list) return;
 
-    const unreadCount = state.notifications.filter(n => !n.read).length;
+    // تعديل 4: استخدام is_read من السيرفر (وليس n.read المحلي فقط)
+    const unreadCount = state.notifications.filter(n => !n.is_read).length;
     const notifDot = document.getElementById("headerNotifDot");
     if (notifDot) {
       if (unreadCount > 0) notifDot.classList.remove("hidden");
@@ -1088,7 +1556,7 @@
 
     if (emptyState) emptyState.classList.add("hidden");
     list.innerHTML = state.notifications.map((n) => `
-      <div class="notif-item ${n.read ? "" : "unread"}" data-notif-id="${n.id}">
+      <div class="notif-item ${n.is_read ? "" : "unread"}" data-notif-id="${n.id}" data-ad-id="${n.ad_id || ''}">
         <div class="notif-icon"><i class="fa-solid fa-bell"></i></div>
         <div class="notif-body">
           <div class="notif-title">${escapeHtml(n.title)}</div>
@@ -1099,12 +1567,18 @@
 
     list.querySelectorAll(".notif-item").forEach(item => {
       item.addEventListener("click", () => {
+        const adId = item.getAttribute("data-ad-id");
+        if (adId) openDetails(adId);
+
         const notifId = item.dataset.notifId;
-        const notif = state.notifications.find(n => n.id == notifId);
-        if (notif) {
-          notif.read = true;
+        const notif = state.notifications.find(n => String(n.id) === String(notifId));
+        if (notif && !notif.is_read) {
+          notif.is_read = true;
           item.classList.remove("unread");
           updateNotificationDot();
+          // تعديل 4: حفظ في السيرفر بشكل غير متزامن
+          const token = localStorage.getItem("dj_token");
+          if (token) Api.markNotificationRead(notifId, token);
         }
       });
     });
@@ -1113,14 +1587,17 @@
   const markAllReadBtn = document.getElementById("markAllReadBtn");
   if (markAllReadBtn) {
     markAllReadBtn.addEventListener("click", () => {
-      state.notifications.forEach((n) => (n.read = true));
+      // تعديل 4: تحديث محلي + إرسال للسيرفر
+      state.notifications.forEach((n) => (n.is_read = true));
       renderNotifications();
       showToast(t("allMarkedRead"), "success");
+      const token = localStorage.getItem("dj_token");
+      if (token) Api.markAllNotificationsRead(token);
     });
   }
 
   function updateNotificationDot() {
-    const unreadCount = state.notifications.filter(n => !n.read).length;
+    const unreadCount = state.notifications.filter(n => !n.is_read).length;
     const notifDot = document.getElementById("headerNotifDot");
     if (notifDot) {
       if (unreadCount > 0) notifDot.classList.remove("hidden");
@@ -1166,41 +1643,50 @@
     }
   }
 
-  const editBtn = document.getElementById("editBtn");
-  if (editBtn) {
-    editBtn.addEventListener("click", () => {
-      const ad = ads.find(a => a.id === state.currentAdId);
-      if (!ad) return;
+  function openEdit(adId) {
+    const ad = ads.find(a => a.id === adId);
+    if (!ad) return;
 
-      state.currentEditAdId = ad.id;
-      const pSec = document.getElementById("paymentSection");
-      if (pSec) pSec.style.display = "none";
+    state.currentEditAdId = ad.id;
+    sessionStorage.setItem("dj_lastEditAdId", ad.id);
 
-      const submitBtnSpan = document.querySelector("#submitAdBtn span");
-      if (submitBtnSpan) {
-        submitBtnSpan.setAttribute("data-i18n", "saveChanges");
-        submitBtnSpan.textContent = t("saveChanges");
-      }
+    const pSec = document.getElementById("paymentSection");
+    if (pSec) pSec.style.display = "none";
 
-      const setVal = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.value = val;
-      };
+    const submitBtnSpan = document.querySelector("#submitAdBtn span");
+    if (submitBtnSpan) {
+      submitBtnSpan.setAttribute("data-i18n", "saveChanges");
+      submitBtnSpan.textContent = t("saveChanges");
+    }
 
-      setVal("fTitle", ad.title.en);
-      setVal("fGovernorate", ad.governorate);
-      setVal("fCategory", ad.category);
-      setVal("fWage", ad.price);
-      setVal("fDetails", ad.desc.en);
-      setVal("fContactMethod", ad.contactMethod);
-      setVal("fPhone", ad.phone);
+    const setVal = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val;
+    };
 
-      goToScreen("add");
+    setVal("fTitle", ad.title.en);
+    setVal("fGovernorate", ad.governorate);
+    setVal("fCategory", ad.category);
+    setVal("fWage", ad.price);
+    setVal("fDetails", ad.desc.en);
+    setVal("fContactMethod", ad.contactMethod);
+    setVal("fPhone", ad.phone);
+
+    goToScreen("add");
+  }
+
+  const editAdBtn = document.getElementById("editAdBtn");
+  if (editAdBtn) {
+    editAdBtn.addEventListener("click", () => {
+      openEdit(state.currentAdId);
     });
   }
 
   async function performSave() {
-    const btn = document.getElementById("confirmCliqBtn") || document.getElementById("submitAdBtn");
+    let btn = document.getElementById("submitAdBtn");
+    if (!state.currentEditAdId) {
+      btn = document.getElementById("confirmCliqBtn") || btn;
+    }
     const originalText = btn ? btn.innerHTML : '';
     try {
       if (btn) {
@@ -1224,8 +1710,13 @@
       formData.append("contact_phone", document.getElementById("fPhone").value.trim());
       
       const imagesInput = document.getElementById("fImages");
-      if (imagesInput && imagesInput.files && imagesInput.files[0]) {
+      if (imagesInput && imagesInput.files && imagesInput.files.length > 0) {
+        // First image as the main image field
         formData.append("image", imagesInput.files[0]);
+        // All images as extra images
+        Array.from(imagesInput.files).forEach(file => {
+          formData.append("images", file);
+        });
       }
       
       const receiptInput = document.getElementById("fReceipt");
@@ -1239,7 +1730,7 @@
 
       if (state.currentEditAdId) {
         const res = await fetch(`${BASE_URL}/ads/${state.currentEditAdId}/`, {
-          method: 'PUT',
+          method: 'PATCH',
           headers: headers,
           body: formData
         });
@@ -1274,7 +1765,10 @@
 
     } catch (error) {
       if (error.message !== "User not authenticated") {
-        const errEl = document.getElementById("cliqModalError") || document.getElementById("addFormError");
+        let errEl = document.getElementById("addFormError");
+        if (!state.currentEditAdId) {
+           errEl = document.getElementById("cliqModalError") || errEl;
+        }
         if (errEl) showFormError(errEl, error.message || "حدث خطأ.");
         else showToast(error.message, "error");
       }
@@ -1305,7 +1799,7 @@
       if (category !== "free" && category !== "ads") {
         if (!wage || parseFloat(wage) <= 0) { showFormError(errorEl, t("wageRequired")); return; }
       }
-      if (!phone || phone.length !== 10) { showFormError(errorEl, t("invalidPhone")); return; }
+      if (!phone || !/^07\d{8}$/.test(phone)) { showFormError(errorEl, t("invalidPhone")); return; }
       if (!details) { showFormError(errorEl, t("fillAllFields")); return; }
       
       if (state.currentEditAdId) {
@@ -1432,10 +1926,19 @@
   }
 
   function updateAllText() {
+    // نص عادي (textContent - آمن من XSS)
     document.querySelectorAll("[data-i18n]").forEach(el => {
       const key = el.dataset.i18n;
       if (i18n[state.lang] && i18n[state.lang][key]) {
         el.textContent = i18n[state.lang][key];
+      }
+    });
+
+    // نص يحتوي على HTML (innerHTML - للعناصر الموثوقة فقط)
+    document.querySelectorAll("[data-i18n-html]").forEach(el => {
+      const key = el.dataset.i18nHtml;
+      if (i18n[state.lang] && i18n[state.lang][key]) {
+        el.innerHTML = i18n[state.lang][key];
       }
     });
 
@@ -1449,7 +1952,7 @@
     if (detailsTextarea) detailsTextarea.placeholder = state.lang === "ar" ? "اكتب وصفك بالتفصيل هنا..." : "Write your description here...";
 
     const phoneInput = document.getElementById("fPhone");
-    if (phoneInput) phoneInput.placeholder = "7X XXX XXXX";
+    if (phoneInput) phoneInput.placeholder = "07X XXX XXXX";
 
     const usernameInput = document.getElementById("regUsername");
     if (usernameInput) usernameInput.placeholder = state.lang === "ar" ? "abu_mohammad" : "john_doe";
@@ -1719,12 +2222,29 @@
     }
   }
 
-  function init() {
+  async function init() {
     const savedUser = localStorage.getItem("dj_user");
     if (savedUser) {
       try {
         state.user = JSON.parse(savedUser);
         state.isAuthenticated = true;
+        
+        // Always ensure role is fetched if missing
+        if (!state.user.role) {
+            const token = localStorage.getItem("dj_token");
+            if (token) {
+                fetch(`${BASE_URL}/users/${state.user.id}/`, {
+                    headers: { 'Authorization': 'Token ' + token }
+                }).then(r => r.json()).then(data => {
+                    if (data && data.role) {
+                        state.user.role = data.role;
+                        localStorage.setItem("dj_user", JSON.stringify(state.user));
+                        updateDrawerUser();
+                    }
+                }).catch(e => console.error(e));
+            }
+        }
+        
       } catch (e) {
         localStorage.removeItem("dj_user");
       }
@@ -1757,10 +2277,39 @@
     updateDrawerUser();
     updateNotificationDot();
 
-    goToScreen("home");
+    // تعديل: استعادة الشاشة السابقة بدلاً من الذهاب إلى الرئيسية دائماً
+    const lastScreen = sessionStorage.getItem("dj_lastScreen") || "home";
+    if (lastScreen !== "details" && lastScreen !== "edit") {
+      goToScreen(lastScreen);
+    } else {
+      // نعرض شاشة فارغة مؤقتاً أو تحميل حتى تأتي الإعلانات
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      const targetScreen = document.getElementById("screen-" + lastScreen);
+      if (targetScreen) targetScreen.classList.add("active");
+    }
 
-    loadAdsFromAPI();
+    loadAdsFromAPI().then(() => {
+      if (lastScreen === "details") {
+        const adId = sessionStorage.getItem("dj_lastAdId");
+        if (adId && ads.some(a => a.id === adId)) {
+          state.currentAdId = adId;
+          renderDetails(adId);
+        } else {
+          goToScreen("home");
+        }
+      } else if (lastScreen === "add") {
+        const editId = sessionStorage.getItem("dj_lastEditAdId");
+        if (editId && ads.some(a => a.id === editId)) {
+          // كنا في وضع التعديل
+          openEdit(editId); 
+        } else {
+          // إضافة عادية، لا نحتاج لفعل شيء إضافي لأن goToScreen("add") أظهرت الشاشة
+        }
+      }
+    });
+
     fetchNotifications();
+    startSilentPolling(); // تعديل 3: تحديث تلقائي كل 45 ثانية
   }
 
   if (document.readyState === "loading") {
